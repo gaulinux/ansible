@@ -85,6 +85,9 @@ report_items = {
 
 ItemPadLen = 28
 SubItemIndent = 5
+
+# This chuck of code was pulled from a stackoverflow post
+# http://stackoverflow.com/questions/14996453/python-libraries-to-calculate-human-readable-filesize-from-bytes
 suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
 
 def human_size(nbytes):
@@ -93,6 +96,8 @@ def human_size(nbytes):
   human = nbytes / (1024.0 ** rank)
   f = ('%.2f' % human).rstrip('0').rstrip('.')
   return '%s %s' % (f, suffixes[rank])
+##
+
 
 
 def sectionTitle(title):
