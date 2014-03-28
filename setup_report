@@ -1,0 +1,160 @@
+#!/usr/bin/python
+
+import ansible.runner
+import math
+
+#ansible_hostname
+#ansible_memtotal_mb
+#ansible_default_ipv4
+
+#def parse_setup_info(setup_bulk_data, ansible_fact, level=0):
+#    if level < 99:
+#       print "%sFact: %s:" %("".rjust(level*5), ansible_fact ),
+#
+#       if type(setup_bulk_data) is dict:
+#          for fact in list(setup_bulk_data.keys()):
+#              print
+#              parse_setup_info( setup_bulk_data[fact], fact ,level=level+1)
+#       elif type(setup_bulk_data) is list:
+#          if len(setup_bulk_data) > 0:
+#              for index, setup_data in enumerate(setup_bulk_data, start=1):
+#                  fact = "%s-%s" % (ansible_fact, index)
+#                  print
+#                  parse_setup_info( setup_data, fact ,level=level+1 )
+#          print
+#       else:
+#           print "%s" % (  setup_bulk_data )
+
+
+runner = ansible.runner.Runner(
+   module_name='setup',
+   module_args='',
+   remote_user='root',
+   pattern='alp05',
+   #pattern='all',
+   forks=10
+)
+results = runner.run()
+
+
+report_items = {
+   'machine': 
+      ['ansible_memtotal_mb',
+       'ansible_memfree_mb',
+       'ansible_processor_count',
+       #'ansible_processor_core',
+       'ansible_processor_vcpus',
+       'ansible_processor',
+       'ansible_architecture',
+       'ansible_userspace_architecture',
+       'ansible_userspace_bits',
+       'ansible_machine',
+       'ansible_system',
+       'ansible_system_vendor',
+       'ansible_bios_version',
+       'ansible_virtualization_type',
+       'ansible_virtualization_role'],
+   'os':
+      ['ansible_os_family',
+       'ansible_product_name',
+       'ansible_distribution',
+       'ansible_distribution_version'],
+   'network_interface':
+      ['active',
+       'type',
+       'module',
+       #'device',
+       'macaddress'],
+   'network_interface_ipv4':
+      ['address',
+       'network',
+       'netmask'],
+   'storage_device':
+      ['size',
+       'vendor',
+       'model'],
+   'mounts':
+      ['mount',
+       'device',
+       'fstype',
+       'size_total',
+       'size_available',
+       'options']
+   }
+
+
+ItemPadLen = 28
+SubItemIndent = 5
+suffixes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+
+def human_size(nbytes):
+  rank = int((math.log10(nbytes)) / 3)
+  rank = min(rank, len(suffixes) - 1)
+  human = nbytes / (1024.0 ** rank)
+  f = ('%.2f' % human).rstrip('0').rstrip('.')
+  return '%s %s' % (f, suffixes[rank])
+
+
+def sectionTitle(title):
+    print "\n%s:\n%s\n" % (title,"".ljust(len(title)+1,'-'))
+
+
+for (hostname, result) in results['contacted'].items():
+    if not 'failed' in result:
+
+        # Machine
+        sectionTitle("Machine details")
+        for section in report_items['machine']:
+            print "%s: %s" % (section.replace('ansible_','').ljust(ItemPadLen,'.'), result['ansible_facts'][section])
+
+        # OS
+        sectionTitle("Operating system")
+        for section in report_items['os']:
+            print "%s: %s" % (section.replace('ansible_','').ljust(ItemPadLen,'.'), result['ansible_facts'][section])
+
+        # Network interface
+        sectionTitle("Network interfaces")
+        for interface in result['ansible_facts']['ansible_interfaces']:
+
+            print "Interface: %s\n" % interface
+            for section in report_items['network_interface']:
+                if section in result['ansible_facts']['ansible_'+interface]:
+                   print "%s%s: %s" % (''.ljust(SubItemIndent,' '),section.replace('ansible_','').ljust(ItemPadLen,'.'), result['ansible_facts']['ansible_'+interface][section])
+
+            if 'ipv4'  in result['ansible_facts']['ansible_'+interface]:
+               for section in report_items['network_interface_ipv4']:
+                   if section in result['ansible_facts']['ansible_'+interface]['ipv4']:
+                      print "%s%s: %s" % (''.ljust(SubItemIndent,' '), section.replace('ansible_','').ljust(ItemPadLen,'.'), result['ansible_facts']['ansible_'+interface]['ipv4'][section])
+            print ""
+
+        # Storage devices
+        sectionTitle("Storage")
+        for storage_device in result['ansible_facts']['ansible_devices']:
+
+            print "Device: %s\n" % storage_device
+
+            for section in report_items['storage_device']:
+                if section in result['ansible_facts']['ansible_devices'][storage_device]:
+                   print "%s%s: %s" % (''.ljust(SubItemIndent,' '),section.replace('ansible_','').ljust(ItemPadLen,'.'), result['ansible_facts']['ansible_devices'][storage_device][section])
+
+            if len(result['ansible_facts']['ansible_devices'][storage_device]['partitions']):
+                print "%spartitions:" % (''.ljust(SubItemIndent*2,' '))
+                for partition in result['ansible_facts']['ansible_devices'][storage_device]['partitions']:
+                    print "%s%s:%s" % (''.ljust(SubItemIndent*3+8,' '),partition, result['ansible_facts']['ansible_devices'][storage_device]['partitions'][partition]['size'].rjust(20,'.'))
+
+            print ""
+
+        # Mounts
+        if result['ansible_facts']['ansible_mounts']:
+            sectionTitle("Filesystem mounts")
+            for mount,mountdata in enumerate(result['ansible_facts']['ansible_mounts']):
+                for section in report_items['mounts']:
+                    if section in mountdata:
+                       if section in ['size_total','size_available']:
+                          value = human_size(mountdata[section])
+                       else:
+                          value = mountdata[section]
+
+                       print "%s%s: %s" % (''.ljust(SubItemIndent,' '), section.ljust(ItemPadLen,'.'), value)
+
+                print
